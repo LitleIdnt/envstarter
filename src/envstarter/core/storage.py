@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-from envstarter.core.models import Environment, Application, Website
+from src.envstarter.core.models import Environment, Application, Website
 
 
 class ConfigManager:

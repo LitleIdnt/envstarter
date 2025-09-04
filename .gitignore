@@ -1,0 +1,45 @@
+﻿# Sensitive files
+*.pfx
+*.p12
+*.key
+*.pem
+auth.json
+secrets.json
+.env
+*.env
+
+# OS system files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Large binary files
+*.iso
+*.dmg
+*.exe
+*.msi
+
+# Large log files and directories
+logs/
+php_errors.log
+error.log
+access.log
+*.log
+!sync_history.log
+!DAILY_ACTIVITY.md
+
+# Large files (>50MB)
+*.sql
+*.dump
+*.zip
+*.tar.gz
+
+# Dependencies
+node_modules/
+vendor/

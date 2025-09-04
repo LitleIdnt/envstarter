@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import List, Dict, Optional, Callable
 from PyQt6.QtCore import QThread, pyqtSignal, QObject
 
-from envstarter.core.models import Environment, Application, Website
+from src.envstarter.core.models import Environment, Application, Website
 
 
 class LaunchWorker(QThread):
@@ -95,6 +95,10 @@ class LaunchWorker(QThread):
             # Expand environment variables in path
             app_path = os.path.expandvars(app.path)
             
+            # Handle Windows Store apps (shell:appsFolder format)
+            if app_path.startswith("shell:appsFolder\\"):
+                return self._launch_store_app(app_path)
+            
             # Handle different types of executables
             if not Path(app_path).exists():
                 # Try to find in PATH
@@ -162,6 +166,21 @@ class LaunchWorker(QThread):
             
         except Exception as e:
             print(f"Error launching application {app.name}: {e}")
+            return False
+    
+    def _launch_store_app(self, app_path: str) -> bool:
+        """Launch a Windows Store app using shell:appsFolder format."""
+        try:
+            if os.name == 'nt':  # Windows only
+                # Use explorer to launch Store app
+                subprocess.Popen(
+                    ['explorer', app_path],
+                    creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+                )
+                return True
+            return False
+        except Exception as e:
+            print(f"Error launching Store app {app_path}: {e}")
             return False
     
     def _launch_website(self, website: Website) -> bool:

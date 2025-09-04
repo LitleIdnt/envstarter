@@ -8,10 +8,11 @@ from PyQt6.QtWidgets import QSystemTrayIcon, QMenu, QApplication
 from PyQt6.QtGui import QIcon, QAction
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from envstarter.core.storage import ConfigManager
-from envstarter.core.launcher import EnvironmentLauncher
-from envstarter.core.models import Environment
-from envstarter.utils.system_integration import SystemIntegration
+from src.envstarter.core.storage import ConfigManager
+from src.envstarter.core.launcher import EnvironmentLauncher
+from src.envstarter.core.models import Environment
+from src.envstarter.utils.system_integration import SystemIntegration
+from src.envstarter.utils.icons import get_tray_icon
 
 
 class AppController(QObject):
@@ -19,6 +20,7 @@ class AppController(QObject):
     
     environment_launched = pyqtSignal(str)  # environment name
     settings_requested = pyqtSignal()
+    show_selector_requested = pyqtSignal()
     quit_requested = pyqtSignal()
     
     def __init__(self):
@@ -40,13 +42,20 @@ class AppController(QObject):
         
         self.tray_icon = QSystemTrayIcon()
         
-        # Create tray icon (using a default icon for now)
-        icon = QIcon()  # We'll add an actual icon later
+        # Create tray icon
+        icon = get_tray_icon()
         self.tray_icon.setIcon(icon)
         self.tray_icon.setToolTip("EnvStarter")
         
         # Create context menu
         menu = QMenu()
+        
+        # Show main window
+        show_action = QAction("Show EnvStarter", menu)
+        show_action.triggered.connect(self.show_selector_requested.emit)
+        menu.addAction(show_action)
+        
+        menu.addSeparator()
         
         # Quick environment selection
         environments = self.get_environments()
@@ -88,7 +97,7 @@ class AppController(QObject):
         """Handle tray icon activation."""
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
             # Show environment selector
-            pass  # This will be handled by the main app
+            self.show_selector_requested.emit()
     
     def refresh_tray_menu(self):
         """Refresh the tray icon menu with current environments."""

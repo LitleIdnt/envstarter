@@ -133,11 +133,13 @@ class SystemIntegration:
         """Get list of installed programs from Windows registry."""
         programs = []
         
-        # Registry paths to check
+        # Registry paths to check (including Windows Store apps)
         registry_paths = [
             (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
             (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
-            (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall")
+            (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+            # Windows Store apps registry locations
+            (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Packages"),
         ]
         
         for hive, path in registry_paths:
@@ -248,3 +250,232 @@ class SystemIntegration:
                 continue
         
         return common_apps
+    
+    def get_windows_store_apps(self) -> List[Dict[str, str]]:
+        """Get Windows Store/UWP applications using PowerShell."""
+        store_apps = []
+        
+        try:
+            # PowerShell command to get installed Windows Store apps
+            ps_command = '''
+            Get-AppxPackage | Where-Object { $_.SignatureKind -eq "Store" -and $_.Name -notlike "*Microsoft.Windows*" -and $_.Name -notlike "*Microsoft.Xbox*" -and $_.PackageFullName -notlike "*Microsoft.549981C3F5F10*" } | 
+            Select-Object Name, PackageFullName, InstallLocation | 
+            ForEach-Object { 
+                $appxManifest = Join-Path $_.InstallLocation "AppxManifest.xml"
+                $displayName = $_.Name
+                $executable = ""
+                
+                if (Test-Path $appxManifest) {
+                    try {
+                        [xml]$manifest = Get-Content $appxManifest
+                        $displayName = $manifest.Package.Properties.DisplayName
+                        if ($manifest.Package.Applications.Application.Executable) {
+                            $executable = $manifest.Package.Applications.Application.Executable
+                        }
+                    } catch {}
+                }
+                
+                Write-Output "$($displayName)|$($_.PackageFullName)|$($_.InstallLocation)|$executable"
+            }
+            '''
+            
+            result = subprocess.run(
+                ["powershell", "-Command", ps_command],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+            )
+            
+            if result.returncode == 0:
+                for line in result.stdout.strip().split('\n'):
+                    if line.strip():
+                        parts = line.split('|')
+                        if len(parts) >= 4:
+                            display_name = parts[0].strip()
+                            package_name = parts[1].strip()
+                            install_location = parts[2].strip()
+                            executable = parts[3].strip()
+                            
+                            if display_name and package_name:
+                                # Create launch command for Store app
+                                launch_path = f"shell:appsFolder\\{package_name}!App"
+                                if executable and install_location:
+                                    exe_path = os.path.join(install_location, executable)
+                                    if os.path.exists(exe_path):
+                                        launch_path = exe_path
+                                
+                                store_apps.append({
+                                    "name": display_name,
+                                    "path": launch_path,
+                                    "install_location": install_location,
+                                    "type": "store_app"
+                                })
+        
+        except Exception as e:
+            print(f"Error getting Windows Store apps: {e}")
+        
+        return store_apps
+    
+    def get_office_apps(self) -> List[Dict[str, str]]:
+        """Get Microsoft Office applications."""
+        office_apps = []
+        
+        # Common Office installation paths
+        office_paths = [
+            r"C:\Program Files\Microsoft Office\root\Office16",
+            r"C:\Program Files (x86)\Microsoft Office\root\Office16", 
+            r"C:\Program Files\Microsoft Office\Office16",
+            r"C:\Program Files (x86)\Microsoft Office\Office16",
+            r"C:\Program Files\Microsoft Office\Office15",
+            r"C:\Program Files (x86)\Microsoft Office\Office15",
+        ]
+        
+        # Office executables to look for
+        office_exes = {
+            "WINWORD.EXE": "Microsoft Word",
+            "EXCEL.EXE": "Microsoft Excel", 
+            "POWERPNT.EXE": "Microsoft PowerPoint",
+            "OUTLOOK.EXE": "Microsoft Outlook",
+            "ONENOTE.EXE": "Microsoft OneNote",
+            "MSACCESS.EXE": "Microsoft Access",
+            "msteams.exe": "Microsoft Teams",
+        }
+        
+        for office_path in office_paths:
+            if os.path.exists(office_path):
+                for exe_name, app_name in office_exes.items():
+                    exe_path = os.path.join(office_path, exe_name)
+                    if os.path.exists(exe_path):
+                        office_apps.append({
+                            "name": app_name,
+                            "path": exe_path,
+                            "install_location": office_path
+                        })
+        
+        return office_apps
+    
+    def get_modern_apps(self) -> List[Dict[str, str]]:
+        """Get modern applications from various sources."""
+        modern_apps = []
+        
+        # Check common modern app locations
+        app_locations = [
+            (os.path.expanduser("~\\AppData\\Local"), ["Discord", "Slack", "WhatsApp", "Spotify", "Zoom"]),
+            (os.path.expanduser("~\\AppData\\Roaming"), ["Discord", "Slack", "Spotify"]),
+            ("C:\\Users\\Public\\Desktop", []),  # Desktop shortcuts
+            (r"C:\ProgramData\Microsoft\Windows\Start Menu\Programs", []),  # Start menu items
+        ]
+        
+        for base_path, app_names in app_locations:
+            if not os.path.exists(base_path):
+                continue
+                
+            try:
+                if app_names:
+                    # Check specific app folders
+                    for app_name in app_names:
+                        app_folder = os.path.join(base_path, app_name)
+                        if os.path.exists(app_folder):
+                            # Look for executables in the app folder
+                            for root, dirs, files in os.walk(app_folder):
+                                for file in files:
+                                    if file.lower().endswith('.exe') and not file.lower().startswith('unins'):
+                                        exe_path = os.path.join(root, file)
+                                        modern_apps.append({
+                                            "name": app_name,
+                                            "path": exe_path,
+                                            "install_location": app_folder
+                                        })
+                                        break
+                                if modern_apps and modern_apps[-1]["name"] == app_name:
+                                    break
+                else:
+                    # Scan for .lnk files (shortcuts)
+                    for item in os.listdir(base_path):
+                        if item.lower().endswith('.lnk'):
+                            lnk_path = os.path.join(base_path, item)
+                            try:
+                                # Try to resolve shortcut target
+                                target = self._resolve_shortcut(lnk_path)
+                                if target and target.lower().endswith('.exe'):
+                                    app_name = item[:-4]  # Remove .lnk extension
+                                    modern_apps.append({
+                                        "name": app_name,
+                                        "path": target,
+                                        "install_location": os.path.dirname(target)
+                                    })
+                            except:
+                                continue
+                                
+            except PermissionError:
+                continue
+            except Exception as e:
+                print(f"Error scanning {base_path}: {e}")
+                continue
+        
+        return modern_apps
+    
+    def _resolve_shortcut(self, lnk_path: str) -> Optional[str]:
+        """Resolve a Windows shortcut (.lnk) to its target."""
+        try:
+            # Use PowerShell to resolve shortcut
+            ps_command = f'''
+            $WshShell = New-Object -comObject WScript.Shell
+            $Shortcut = $WshShell.CreateShortcut("{lnk_path}")
+            Write-Output $Shortcut.TargetPath
+            '''
+            
+            result = subprocess.run(
+                ["powershell", "-Command", ps_command],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+            )
+            
+            if result.returncode == 0:
+                target = result.stdout.strip()
+                if target and os.path.exists(target):
+                    return target
+        except:
+            pass
+        
+        return None
+    
+    def get_all_applications(self) -> List[Dict[str, str]]:
+        """Get comprehensive list of all applications."""
+        all_apps = []
+        
+        print("Scanning registry programs...")
+        registry_apps = self.get_installed_programs()
+        all_apps.extend(registry_apps)
+        
+        print("Scanning common application locations...")
+        common_apps = self.find_common_applications()
+        all_apps.extend(common_apps)
+        
+        print("Scanning Windows Store apps...")
+        store_apps = self.get_windows_store_apps()
+        all_apps.extend(store_apps)
+        
+        print("Scanning Office applications...")
+        office_apps = self.get_office_apps()
+        all_apps.extend(office_apps)
+        
+        print("Scanning modern applications...")
+        modern_apps = self.get_modern_apps()
+        all_apps.extend(modern_apps)
+        
+        # Remove duplicates based on name (case insensitive)
+        unique_apps = {}
+        for app in all_apps:
+            key = app["name"].lower().strip()
+            if key and len(key) > 2:  # Filter very short names
+                if key not in unique_apps:
+                    unique_apps[key] = app
+                elif app.get("path", "").lower().endswith('.exe'):
+                    # Prefer .exe files over other formats
+                    unique_apps[key] = app
+        
+        return list(unique_apps.values())
