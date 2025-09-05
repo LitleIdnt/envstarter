@@ -84,7 +84,7 @@ class Website:
 
 @dataclass
 class Environment:
-    """Represents a complete work environment."""
+    """Represents a complete work environment with virtual desktop isolation."""
     name: str
     description: str = ""
     applications: List[Application] = field(default_factory=list)
@@ -93,6 +93,12 @@ class Environment:
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     created_at: Optional[str] = None
     modified_at: Optional[str] = None
+    # Virtual Desktop Integration
+    use_virtual_desktop: bool = True  # Use isolated virtual desktop
+    desktop_index: int = -1  # Auto-assign desktop index (-1 = auto)
+    desktop_name: Optional[str] = None  # Custom desktop name
+    auto_switch_desktop: bool = True  # Automatically switch to this desktop when launched
+    close_apps_on_stop: bool = False  # Close all apps when stopping environment
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -104,7 +110,12 @@ class Environment:
             "websites": [site.to_dict() for site in self.websites],
             "startup_delay": self.startup_delay,
             "created_at": self.created_at,
-            "modified_at": self.modified_at
+            "modified_at": self.modified_at,
+            "use_virtual_desktop": self.use_virtual_desktop,
+            "desktop_index": self.desktop_index,
+            "desktop_name": self.desktop_name,
+            "auto_switch_desktop": self.auto_switch_desktop,
+            "close_apps_on_stop": self.close_apps_on_stop
         }
     
     @classmethod
@@ -118,7 +129,12 @@ class Environment:
             websites=[Website.from_dict(site) for site in data.get("websites", [])],
             startup_delay=data.get("startup_delay", 0),
             created_at=data.get("created_at"),
-            modified_at=data.get("modified_at")
+            modified_at=data.get("modified_at"),
+            use_virtual_desktop=data.get("use_virtual_desktop", True),
+            desktop_index=data.get("desktop_index", -1),
+            desktop_name=data.get("desktop_name"),
+            auto_switch_desktop=data.get("auto_switch_desktop", True),
+            close_apps_on_stop=data.get("close_apps_on_stop", False)
         )
     
     def get_total_items(self) -> int:

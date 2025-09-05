@@ -28,10 +28,12 @@ class AppScanWorker(QThread):
     def run(self):
         """Scan for installed applications."""
         try:
-            self.progress_updated.emit(5, "Starting comprehensive application scan...")
+            self.progress_updated.emit(5, "Starting fast application scan...")
             
-            # Use the new comprehensive scanning method
-            all_apps = self.system_integration.get_all_applications()
+            # Use the new comprehensive scanning method with progress callback
+            all_apps = self.system_integration.get_all_applications(
+                progress_callback=lambda progress, status: self.progress_updated.emit(progress, status)
+            )
             
             self.progress_updated.emit(90, "Sorting and filtering results...")
             

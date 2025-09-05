@@ -57,8 +57,8 @@ def create_executable():
         "--onefile",                    # Single executable
         "--windowed",                   # No console window
         "--name", "EnvStarter",         # Executable name
-        "--icon", "resources/envstarter_icon.ico",  # Icon (if exists)
-        "--add-data", "src;src",        # Include source code
+        "--icon=resources/envstarter_icon.ico",     # Icon (if exists)
+        "--add-data=src;src",            # Include source code
         "--hidden-import", "PyQt6.QtCore",
         "--hidden-import", "PyQt6.QtWidgets", 
         "--hidden-import", "PyQt6.QtGui",

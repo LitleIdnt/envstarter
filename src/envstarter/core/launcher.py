@@ -11,6 +11,7 @@ from typing import List, Dict, Optional, Callable
 from PyQt6.QtCore import QThread, pyqtSignal, QObject
 
 from src.envstarter.core.models import Environment, Application, Website
+from src.envstarter.utils.system_integration import SystemIntegration
 
 
 class LaunchWorker(QThread):
@@ -25,9 +26,11 @@ class LaunchWorker(QThread):
         super().__init__()
         self.environment = environment
         self.launched_processes = []
+        self.system_integration = SystemIntegration()
+        self.assigned_desktop_index = -1
     
     def run(self):
-        """Run the launch process."""
+        """Run the launch process with Virtual Desktop isolation."""
         try:
             total_items = self.environment.get_total_items()
             if total_items == 0:
@@ -37,9 +40,16 @@ class LaunchWorker(QThread):
             current_item = 0
             success_count = 0
             
+            # Setup Virtual Desktop if enabled
+            if self.environment.use_virtual_desktop:
+                self.progress_updated.emit(5, "Setting up virtual desktop...")
+                desktop_setup_success = self._setup_virtual_desktop()
+                if not desktop_setup_success:
+                    self.progress_updated.emit(10, "Virtual desktop setup failed, using current desktop...")
+            
             # Apply startup delay if specified
             if self.environment.startup_delay > 0:
-                self.progress_updated.emit(0, f"Waiting {self.environment.startup_delay} seconds...")
+                self.progress_updated.emit(15, f"Waiting {self.environment.startup_delay} seconds...")
                 time.sleep(self.environment.startup_delay)
             
             # Launch applications
@@ -50,7 +60,11 @@ class LaunchWorker(QThread):
                 self.progress_updated.emit(progress, f"Starting {app.name}...")
                 
                 try:
-                    success = self._launch_application(app)
+                    # Launch on virtual desktop if enabled
+                    if self.environment.use_virtual_desktop and self.assigned_desktop_index >= 0:
+                        success = self.system_integration.launch_app_on_desktop(app.path, self.assigned_desktop_index)
+                    else:
+                        success = self._launch_application(app)
                     if success:
                         success_count += 1
                     self.item_launched.emit(app.name, success)
@@ -69,7 +83,11 @@ class LaunchWorker(QThread):
                 self.progress_updated.emit(progress, f"Opening {website.name}...")
                 
                 try:
-                    success = self._launch_website(website)
+                    # Launch website on virtual desktop if enabled
+                    if self.environment.use_virtual_desktop and self.assigned_desktop_index >= 0:
+                        success = self.system_integration.launch_app_on_desktop(website.url, self.assigned_desktop_index)
+                    else:
+                        success = self._launch_website(website)
                     if success:
                         success_count += 1
                     self.item_launched.emit(website.name, success)
@@ -88,6 +106,36 @@ class LaunchWorker(QThread):
         except Exception as e:
             self.error_occurred.emit(f"Launch process failed: {str(e)}")
             self.launch_completed.emit(False)
+    
+    def _setup_virtual_desktop(self) -> bool:
+        """Setup virtual desktop for environment isolation."""
+        try:
+            # Determine desktop index
+            if self.environment.desktop_index >= 0:
+                # Use specified desktop index
+                self.assigned_desktop_index = self.environment.desktop_index
+            else:
+                # Auto-assign desktop index based on environment name hash
+                self.assigned_desktop_index = hash(self.environment.name) % 4 + 1  # Use desktops 1-4
+            
+            # Create desktop name
+            desktop_name = self.environment.desktop_name or f"EnvStarter-{self.environment.name}"
+            
+            # Create virtual desktop if it doesn't exist
+            self.system_integration.create_virtual_desktop(desktop_name)
+            
+            # Switch to the desktop if auto_switch is enabled
+            if self.environment.auto_switch_desktop:
+                success = self.system_integration.switch_to_virtual_desktop(self.assigned_desktop_index)
+                if success:
+                    time.sleep(1)  # Wait for desktop switch to complete
+                    return True
+            
+            return True
+            
+        except Exception as e:
+            print(f"Error setting up virtual desktop: {e}")
+            return False
     
     def _launch_application(self, app: Application) -> bool:
         """Launch a single application."""
@@ -261,6 +309,25 @@ class EnvironmentLauncher(QObject):
             self.current_worker.stop_launched_processes()
             self.current_worker.terminate()
             self.current_worker.wait(3000)  # Wait up to 3 seconds
+    
+    def stop_environment(self, environment: Environment):
+        """Stop a running environment by closing its applications."""
+        try:
+            if environment.use_virtual_desktop and environment.close_apps_on_stop:
+                # Close all apps on the environment's virtual desktop
+                system_integration = SystemIntegration()
+                desktop_index = environment.desktop_index
+                if desktop_index < 0:
+                    desktop_index = hash(environment.name) % 4 + 1
+                
+                system_integration.close_desktop_apps(desktop_index)
+                self.launch_completed.emit(environment.name, True)
+            else:
+                # Traditional process termination (if we tracked them)
+                self.launch_completed.emit(environment.name, True)
+                
+        except Exception as e:
+            self.error_occurred.emit(f"Error stopping environment: {str(e)}")
     
     def is_launching(self) -> bool:
         """Check if currently launching an environment."""
