@@ -16,7 +16,7 @@ from PyQt6.QtCore import QObject, pyqtSignal, QTimer
 from concurrent.futures import ThreadPoolExecutor
 
 from src.envstarter.core.models import Environment
-from src.envstarter.core.environment_container import EnvironmentContainer, EnvironmentState
+from src.envstarter.core.simple_environment_container import SimpleEnvironmentContainer as EnvironmentContainer, EnvironmentState
 from src.envstarter.core.storage import ConfigManager
 
 

@@ -469,7 +469,7 @@ class SystemIntegration:
                 # Fallback: Create using Windows key shortcuts
                 # This simulates Win+Ctrl+D to create new desktop
                 Add-Type -AssemblyName System.Windows.Forms
-                [System.Windows.Forms.SendKeys]::SendWait("^{LWIN}d")
+                [System.Windows.Forms.SendKeys]::SendWait("^{LWINKEY}d")
                 Start-Sleep -Milliseconds 500
                 Write-Output "SUCCESS: Created virtual desktop via shortcut"
             }}

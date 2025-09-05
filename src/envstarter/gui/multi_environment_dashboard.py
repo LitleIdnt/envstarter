@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 from src.envstarter.core.models import Environment
 from src.envstarter.core.multi_environment_manager import get_multi_environment_manager
 from src.envstarter.core.concurrent_launcher import get_concurrent_launcher, LaunchMode, LaunchThread
-from src.envstarter.core.environment_container import EnvironmentState
+from src.envstarter.core.simple_environment_container import EnvironmentState
 
 
 class ContainerStatusCard(QFrame):
