@@ -24,7 +24,7 @@ sys.path.insert(0, str(project_root))
 
 from src.envstarter.core.enhanced_app_controller import EnhancedAppController
 from src.envstarter.gui.environment_selector import EnvironmentSelector
-from src.envstarter.gui.settings_dialog import SettingsDialog
+from src.envstarter.gui.enhanced_settings_dialog import EnhancedSettingsDialog
 from src.envstarter.gui.multi_environment_dashboard import MultiEnvironmentDashboard
 from src.envstarter.utils.system_integration import SystemIntegration
 
@@ -169,7 +169,7 @@ class EnhancedEnvStarterApp:
         print("⚙️  Opening Settings Dialog...")
         
         if not self.settings_dialog:
-            self.settings_dialog = SettingsDialog(self.controller)
+            self.settings_dialog = EnhancedSettingsDialog(self.controller)
             self.settings_dialog.environment_changed.connect(self._on_environments_changed)
         
         self.settings_dialog.show()

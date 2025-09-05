@@ -10,7 +10,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont, QPalette, QIcon
 
 from src.envstarter.core.models import Environment
-from src.envstarter.core.app_controller import AppController
+from src.envstarter.core.enhanced_app_controller import EnhancedAppController
 
 
 class EnvironmentListItem(QFrame):
@@ -212,7 +212,7 @@ class EnvironmentSelector(QWidget):
     
     settings_requested = pyqtSignal()
     
-    def __init__(self, controller: AppController):
+    def __init__(self, controller: EnhancedAppController):
         super().__init__()
         self.controller = controller
         self.current_environment = None
@@ -341,6 +341,7 @@ class EnvironmentSelector(QWidget):
         button_layout = QHBoxLayout()
         button_layout.setSpacing(12)
         
+        # Enhanced multi-environment buttons
         self.launch_button = QPushButton("🚀 Launch Environment")
         self.launch_button.setObjectName("primary-button")
         self.launch_button.setMinimumHeight(44)  # WCAG minimum touch target
@@ -402,7 +403,72 @@ class EnvironmentSelector(QWidget):
         self.settings_button.setToolTip("Open settings to manage environments (Ctrl+,)")
         button_layout.addWidget(self.settings_button)
         
+        # Enhanced multi-environment buttons
+        enhanced_layout = QHBoxLayout()
+        enhanced_layout.setSpacing(8)
+        
+        self.launch_all_button = QPushButton("🚀 Launch All")
+        self.launch_all_button.setMinimumHeight(36)
+        self.launch_all_button.setStyleSheet("""
+            QPushButton {
+                background-color: #fd7e14;
+                color: white;
+                border: 2px solid #fd7e14;
+                border-radius: 6px;
+                padding: 4px 12px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #e8590c;
+                border-color: #e8590c;
+            }
+        """)
+        self.launch_all_button.clicked.connect(self.launch_all_environments)
+        enhanced_layout.addWidget(self.launch_all_button)
+        
+        self.stop_all_button = QPushButton("🛑 Stop All")
+        self.stop_all_button.setMinimumHeight(36)
+        self.stop_all_button.setStyleSheet("""
+            QPushButton {
+                background-color: #dc3545;
+                color: white;
+                border: 2px solid #dc3545;
+                border-radius: 6px;
+                padding: 4px 12px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #c82333;
+                border-color: #c82333;
+            }
+        """)
+        self.stop_all_button.clicked.connect(self.stop_all_containers)
+        enhanced_layout.addWidget(self.stop_all_button)
+        
+        self.dashboard_button = QPushButton("🎮 Dashboard")
+        self.dashboard_button.setMinimumHeight(36)
+        self.dashboard_button.setStyleSheet("""
+            QPushButton {
+                background-color: #6f42c1;
+                color: white;
+                border: 2px solid #6f42c1;
+                border-radius: 6px;
+                padding: 4px 12px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #5a32a3;
+                border-color: #5a32a3;
+            }
+        """)
+        self.dashboard_button.clicked.connect(self.show_dashboard)
+        enhanced_layout.addWidget(self.dashboard_button)
+        
         left_layout.addLayout(button_layout)
+        left_layout.addLayout(enhanced_layout)
         left_panel.setLayout(left_layout)
         
         # Right panel - Details and progress
@@ -543,7 +609,7 @@ class EnvironmentSelector(QWidget):
         self.environment_list.itemClicked.connect(self.on_environment_selected)
         self.environment_list.itemDoubleClicked.connect(self.on_environment_double_clicked)
         self.launch_button.clicked.connect(self.on_launch_clicked)
-        self.settings_button.clicked.connect(self.settings_requested.emit)
+        self.settings_button.clicked.connect(self.show_settings)
         self.minimize_button.clicked.connect(self.hide)
         self.exit_button.clicked.connect(self.controller.quit_application)
         
@@ -687,6 +753,103 @@ class EnvironmentSelector(QWidget):
         """Handle launch error."""
         self.launch_button.setEnabled(True)
         self.progress_widget.add_log_entry(f"Error: {error_message}", False)
+    
+    def launch_all_environments(self):
+        """Launch all available environments."""
+        environments = self.controller.get_environments()
+        
+        if not environments:
+            QMessageBox.warning(self, "No Environments", "No environments available to launch.")
+            return
+        
+        reply = QMessageBox.question(
+            self, "Launch All Environments",
+            f"Are you sure you want to launch all {len(environments)} environments?\n\n"
+            f"This will start all environments simultaneously.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            from src.envstarter.core.concurrent_launcher import LaunchMode
+            
+            # Use concurrent launch mode for maximum speed
+            success_count = 0
+            for env in environments:
+                try:
+                    if self.controller.launch_environment_quick(env):
+                        success_count += 1
+                        self.progress_widget.add_log_entry(f"Launched: {env.name}", True)
+                    else:
+                        self.progress_widget.add_log_entry(f"Failed to launch: {env.name}", False)
+                except Exception as e:
+                    self.progress_widget.add_log_entry(f"Error launching {env.name}: {str(e)}", False)
+            
+            QMessageBox.information(
+                self, "Launch All Complete",
+                f"Launch completed!\n{success_count}/{len(environments)} environments started successfully."
+            )
+    
+    def stop_all_containers(self):
+        """Stop all running containers."""
+        containers = self.controller.manager.get_all_containers()
+        running = [cid for cid, info in containers.items() if info["state"] == "running"]
+        
+        if not running:
+            QMessageBox.information(self, "No Containers", "No running containers to stop.")
+            return
+        
+        reply = QMessageBox.question(
+            self, "Stop All Containers",
+            f"Are you sure you want to stop all {len(running)} running containers?\n\n"
+            f"This will close all applications in all environments.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self.controller.stop_all_containers()
+            QMessageBox.information(self, "Containers Stopped", f"Stopped {len(running)} containers.")
+            self.progress_widget.add_log_entry(f"Stopped {len(running)} containers", True)
+    
+    def show_dashboard(self):
+        """Show the multi-environment dashboard."""
+        try:
+            from src.envstarter.gui.multi_environment_dashboard import MultiEnvironmentDashboard
+            
+            # Create or show dashboard
+            if not hasattr(self, 'dashboard') or not self.dashboard:
+                self.dashboard = MultiEnvironmentDashboard()
+            
+            self.dashboard.show()
+            self.dashboard.raise_()
+            self.dashboard.activateWindow()
+            
+            # Optionally minimize this selector
+            self.showMinimized()
+            
+        except Exception as e:
+            QMessageBox.warning(self, "Dashboard Error", f"Failed to open dashboard: {str(e)}")
+    
+    def show_settings(self):
+        """Show the enhanced settings dialog."""
+        try:
+            from src.envstarter.gui.enhanced_settings_dialog import EnhancedSettingsDialog
+            
+            # Create or show settings dialog
+            if not hasattr(self, 'settings_dialog') or not self.settings_dialog:
+                self.settings_dialog = EnhancedSettingsDialog(self.controller)
+                self.settings_dialog.environment_changed.connect(self.on_environments_changed)
+            
+            self.settings_dialog.show()
+            self.settings_dialog.raise_()
+            self.settings_dialog.activateWindow()
+            
+        except Exception as e:
+            QMessageBox.warning(self, "Settings Error", f"Failed to open settings: {str(e)}")
+    
+    def on_environments_changed(self):
+        """Handle environment changes."""
+        # Refresh the environment list
+        self.load_environments()
     
     def closeEvent(self, event):
         """Handle window close event."""

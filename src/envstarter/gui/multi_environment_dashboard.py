@@ -455,9 +455,36 @@ class MultiEnvironmentDashboard(QWidget):
         self.refresh_btn.clicked.connect(self.refresh_containers)
         header_layout.addWidget(self.refresh_btn)
         
+        self.settings_btn = QPushButton("⚙️ Settings")
+        self.settings_btn.clicked.connect(self.show_settings)
+        self.settings_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #0366d6;
+                color: white;
+                border: 2px solid #0366d6;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-size: 12px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #0256cc;
+                border-color: #0256cc;
+            }
+        """)
+        header_layout.addWidget(self.settings_btn)
+        
+        self.quick_launch_btn = QPushButton("⚡ Quick Launch")
+        self.quick_launch_btn.clicked.connect(self.show_quick_launch_dialog)
+        header_layout.addWidget(self.quick_launch_btn)
+        
         self.launch_multiple_btn = QPushButton("🚀 Launch Multiple")
         self.launch_multiple_btn.clicked.connect(self.show_batch_launch_dialog)
         header_layout.addWidget(self.launch_multiple_btn)
+        
+        self.launch_all_btn = QPushButton("🚀 Launch All")
+        self.launch_all_btn.clicked.connect(self.launch_all_environments)
+        header_layout.addWidget(self.launch_all_btn)
         
         self.stop_all_btn = QPushButton("🛑 Stop All")
         self.stop_all_btn.clicked.connect(self.stop_all_containers)
@@ -476,9 +503,17 @@ class MultiEnvironmentDashboard(QWidget):
         resources_tab = self.create_resources_tab()
         self.tab_widget.addTab(resources_tab, "📊 Resources")
         
-        # Tab 3: Launch Queue
+        # Tab 3: Quick Launch
+        quick_launch_tab = self.create_quick_launch_tab()
+        self.tab_widget.addTab(quick_launch_tab, "⚡ Quick Launch")
+        
+        # Tab 4: Launch Queue
         queue_tab = self.create_queue_tab()
         self.tab_widget.addTab(queue_tab, "📋 Launch Queue")
+        
+        # Tab 5: Batch Operations
+        batch_tab = self.create_batch_operations_tab()
+        self.tab_widget.addTab(batch_tab, "🚀 Batch Operations")
         
         main_layout.addWidget(self.tab_widget)
         
@@ -942,6 +977,368 @@ class MultiEnvironmentDashboard(QWidget):
         self.launch_queue_btn.setEnabled(True)
         
         QMessageBox.critical(self, "Launch Error", f"Launch failed: {error_message}")
+    
+    def create_quick_launch_tab(self) -> QWidget:
+        """Create the quick launch tab with all environments."""
+        tab = QWidget()
+        layout = QVBoxLayout()
+        
+        # Header
+        header_layout = QHBoxLayout()
+        header_layout.addWidget(QLabel("⚡ Quick Launch Environments:"))
+        header_layout.addStretch()
+        
+        # Search/filter
+        from PyQt6.QtWidgets import QLineEdit
+        self.quick_search = QLineEdit()
+        self.quick_search.setPlaceholderText("Search environments...")
+        self.quick_search.textChanged.connect(self.filter_quick_launch)
+        header_layout.addWidget(self.quick_search)
+        
+        layout.addLayout(header_layout)
+        
+        # Environment list for quick launch
+        self.quick_launch_list = QListWidget()
+        self.quick_launch_list.setMinimumHeight(400)
+        layout.addWidget(self.quick_launch_list)
+        
+        # Load environments
+        self.load_quick_launch_environments()
+        
+        # Quick actions
+        actions_layout = QHBoxLayout()
+        
+        launch_selected_btn = QPushButton("🚀 Launch Selected")
+        launch_selected_btn.clicked.connect(self.launch_selected_environments)
+        actions_layout.addWidget(launch_selected_btn)
+        
+        select_all_btn = QPushButton("✅ Select All")
+        select_all_btn.clicked.connect(self.select_all_environments)
+        actions_layout.addWidget(select_all_btn)
+        
+        select_none_btn = QPushButton("❌ Select None")
+        select_none_btn.clicked.connect(self.select_no_environments)
+        actions_layout.addWidget(select_none_btn)
+        
+        layout.addLayout(actions_layout)
+        
+        tab.setLayout(layout)
+        return tab
+    
+    def create_batch_operations_tab(self) -> QWidget:
+        """Create the batch operations tab."""
+        tab = QWidget()
+        layout = QVBoxLayout()
+        
+        # Batch Launch Section
+        batch_group = QGroupBox("🚀 Batch Launch Operations")
+        batch_layout = QVBoxLayout()
+        
+        # Launch mode selection
+        from PyQt6.QtWidgets import QRadioButton, QButtonGroup
+        mode_layout = QHBoxLayout()
+        mode_layout.addWidget(QLabel("Launch Mode:"))
+        
+        self.launch_mode_group = QButtonGroup()
+        
+        concurrent_radio = QRadioButton("Concurrent")
+        concurrent_radio.setChecked(True)
+        self.launch_mode_group.addButton(concurrent_radio, 0)
+        mode_layout.addWidget(concurrent_radio)
+        
+        sequential_radio = QRadioButton("Sequential")
+        self.launch_mode_group.addButton(sequential_radio, 1)
+        mode_layout.addWidget(sequential_radio)
+        
+        batched_radio = QRadioButton("Batched")
+        self.launch_mode_group.addButton(batched_radio, 2)
+        mode_layout.addWidget(batched_radio)
+        
+        staggered_radio = QRadioButton("Staggered")
+        self.launch_mode_group.addButton(staggered_radio, 3)
+        mode_layout.addWidget(staggered_radio)
+        
+        batch_layout.addLayout(mode_layout)
+        
+        # Batch size and delay
+        settings_layout = QHBoxLayout()
+        
+        settings_layout.addWidget(QLabel("Batch Size:"))
+        self.batch_size_spin = QSpinBox()
+        self.batch_size_spin.setRange(1, 20)
+        self.batch_size_spin.setValue(3)
+        settings_layout.addWidget(self.batch_size_spin)
+        
+        settings_layout.addWidget(QLabel("Delay (ms):"))
+        self.delay_spin = QSpinBox()
+        self.delay_spin.setRange(0, 10000)
+        self.delay_spin.setValue(1000)
+        self.delay_spin.setSuffix(" ms")
+        settings_layout.addWidget(self.delay_spin)
+        
+        settings_layout.addStretch()
+        batch_layout.addLayout(settings_layout)
+        
+        # Action buttons
+        batch_actions_layout = QHBoxLayout()
+        
+        self.launch_all_btn2 = QPushButton("🚀 Launch All Environments")
+        self.launch_all_btn2.clicked.connect(self.launch_all_environments)
+        batch_actions_layout.addWidget(self.launch_all_btn2)
+        
+        self.stop_all_btn2 = QPushButton("🛑 Stop All Containers")
+        self.stop_all_btn2.clicked.connect(self.stop_all_containers)
+        batch_actions_layout.addWidget(self.stop_all_btn2)
+        
+        batch_layout.addLayout(batch_actions_layout)
+        batch_group.setLayout(batch_layout)
+        layout.addWidget(batch_group)
+        
+        # Container Operations Section
+        container_group = QGroupBox("📦 Container Operations")
+        container_layout = QVBoxLayout()
+        
+        container_actions_layout = QHBoxLayout()
+        
+        pause_all_btn = QPushButton("⏸️ Pause All Containers")
+        pause_all_btn.clicked.connect(self.pause_all_containers)
+        container_actions_layout.addWidget(pause_all_btn)
+        
+        resume_all_btn = QPushButton("▶️ Resume All Containers")
+        resume_all_btn.clicked.connect(self.resume_all_containers)
+        container_actions_layout.addWidget(resume_all_btn)
+        
+        container_layout.addLayout(container_actions_layout)
+        container_group.setLayout(container_layout)
+        layout.addWidget(container_group)
+        
+        layout.addStretch()
+        tab.setLayout(layout)
+        return tab
+    
+    def load_quick_launch_environments(self):
+        """Load environments into quick launch list."""
+        from src.envstarter.core.enhanced_app_controller import EnhancedAppController
+        from src.envstarter.core.storage import ConfigManager
+        
+        config_manager = ConfigManager()
+        environments = config_manager.get_environments()
+        
+        self.quick_launch_list.clear()
+        
+        for env in environments:
+            from PyQt6.QtCore import Qt
+            item = QListWidgetItem(f"🎯 {env.name}")
+            item.setData(Qt.ItemDataRole.UserRole, env)
+            item.setCheckState(Qt.CheckState.Unchecked)
+            
+            # Add description as tooltip
+            if env.description:
+                item.setToolTip(f"{env.name}: {env.description}")
+            
+            self.quick_launch_list.addItem(item)
+    
+    def filter_quick_launch(self):
+        """Filter quick launch environments."""
+        filter_text = self.quick_search.text().lower()
+        
+        for i in range(self.quick_launch_list.count()):
+            item = self.quick_launch_list.item(i)
+            env = item.data(Qt.ItemDataRole.UserRole)
+            
+            # Show item if filter matches name or description
+            visible = (filter_text in env.name.lower() or 
+                      filter_text in (env.description or "").lower())
+            item.setHidden(not visible)
+    
+    def launch_selected_environments(self):
+        """Launch selected environments from quick launch."""
+        selected_envs = []
+        
+        for i in range(self.quick_launch_list.count()):
+            item = self.quick_launch_list.item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                env = item.data(Qt.ItemDataRole.UserRole)
+                selected_envs.append(env)
+        
+        if not selected_envs:
+            QMessageBox.warning(self, "No Selection", "Please select environments to launch.")
+            return
+        
+        # Launch selected environments
+        self.launch_environments(selected_envs)
+    
+    def select_all_environments(self):
+        """Select all visible environments."""
+        for i in range(self.quick_launch_list.count()):
+            item = self.quick_launch_list.item(i)
+            if not item.isHidden():
+                item.setCheckState(Qt.CheckState.Checked)
+    
+    def select_no_environments(self):
+        """Deselect all environments."""
+        for i in range(self.quick_launch_list.count()):
+            item = self.quick_launch_list.item(i)
+            item.setCheckState(Qt.CheckState.Unchecked)
+    
+    def launch_all_environments(self):
+        """Launch all available environments."""
+        from src.envstarter.core.storage import ConfigManager
+        
+        config_manager = ConfigManager()
+        environments = config_manager.get_environments()
+        
+        if not environments:
+            QMessageBox.warning(self, "No Environments", "No environments available to launch.")
+            return
+        
+        reply = QMessageBox.question(
+            self, "Launch All Environments",
+            f"Are you sure you want to launch all {len(environments)} environments?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self.launch_environments(environments)
+    
+    def launch_environments(self, environments: List):
+        """Launch multiple environments with selected mode."""
+        # Get launch mode
+        mode_id = self.launch_mode_group.checkedId()
+        if mode_id == 0:
+            mode = LaunchMode.CONCURRENT
+        elif mode_id == 1:
+            mode = LaunchMode.SEQUENTIAL
+        elif mode_id == 2:
+            mode = LaunchMode.BATCHED
+        else:
+            mode = LaunchMode.STAGGERED
+        
+        # Get settings
+        batch_size = self.batch_size_spin.value()
+        delay_ms = self.delay_spin.value()
+        
+        print(f"🚀 Launching {len(environments)} environments in {mode} mode")
+        
+        # Create launch thread
+        self.launch_thread = LaunchThread(
+            environments, mode, 
+            batch_size=batch_size, 
+            stagger_delay_ms=delay_ms
+        )
+        
+        # Connect signals
+        self.launch_thread.launch_started.connect(self.on_launch_started)
+        self.launch_thread.launch_completed.connect(self.on_launch_completed)
+        self.launch_thread.all_completed.connect(self.on_all_launches_completed)
+        self.launch_thread.error_occurred.connect(self.on_launch_thread_error)
+        
+        # Start launch
+        self.launch_thread.start()
+        
+        # Update UI
+        QMessageBox.information(
+            self, "Launch Started",
+            f"Started launching {len(environments)} environments in {mode} mode."
+        )
+    
+    def pause_all_containers(self):
+        """Pause all running containers."""
+        containers = self.manager.get_all_containers()
+        running = [cid for cid, info in containers.items() if info["state"] == "running"]
+        
+        if not running:
+            QMessageBox.information(self, "No Containers", "No running containers to pause.")
+            return
+        
+        reply = QMessageBox.question(
+            self, "Pause All Containers",
+            f"Are you sure you want to pause {len(running)} running containers?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            for container_id in running:
+                try:
+                    asyncio.create_task(self.manager.pause_container(container_id))
+                except Exception as e:
+                    print(f"Failed to pause container {container_id}: {e}")
+            
+            QMessageBox.information(self, "Containers Paused", f"Paused {len(running)} containers.")
+            QTimer.singleShot(2000, self.refresh_containers)
+    
+    def resume_all_containers(self):
+        """Resume all paused containers."""
+        containers = self.manager.get_all_containers()
+        paused = [cid for cid, info in containers.items() if info["state"] == "paused"]
+        
+        if not paused:
+            QMessageBox.information(self, "No Containers", "No paused containers to resume.")
+            return
+        
+        reply = QMessageBox.question(
+            self, "Resume All Containers",
+            f"Are you sure you want to resume {len(paused)} paused containers?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            for container_id in paused:
+                try:
+                    def resume_async():
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        try:
+                            loop.run_until_complete(self.manager.resume_container(container_id))
+                        finally:
+                            loop.close()
+                    
+                    thread = threading.Thread(target=resume_async, daemon=True)
+                    thread.start()
+                except Exception as e:
+                    print(f"Failed to resume container {container_id}: {e}")
+            
+            QMessageBox.information(self, "Containers Resumed", f"Resumed {len(paused)} containers.")
+            QTimer.singleShot(2000, self.refresh_containers)
+    
+    def show_settings(self):
+        """Show the settings dialog."""
+        try:
+            from src.envstarter.gui.enhanced_settings_dialog import EnhancedSettingsDialog
+            from src.envstarter.core.enhanced_app_controller import EnhancedAppController
+            from src.envstarter.core.storage import ConfigManager
+            
+            # Create a temporary controller for settings if needed
+            if not hasattr(self, 'controller'):
+                self.controller = EnhancedAppController()
+            
+            # Create or show settings dialog
+            if not hasattr(self, 'settings_dialog') or not self.settings_dialog:
+                self.settings_dialog = EnhancedSettingsDialog(self.controller)
+                self.settings_dialog.environment_changed.connect(self.on_environments_changed)
+            
+            self.settings_dialog.show()
+            self.settings_dialog.raise_()
+            self.settings_dialog.activateWindow()
+            
+        except Exception as e:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Settings Error", f"Failed to open settings: {str(e)}")
+    
+    def on_environments_changed(self):
+        """Handle environment changes."""
+        # Refresh the quick launch list and containers
+        if hasattr(self, 'quick_launch_list'):
+            self.load_quick_launch_environments()
+        self.refresh_containers()
+    
+    def show_quick_launch_dialog(self):
+        """Show quick launch dialog."""
+        # Switch to quick launch tab
+        for i in range(self.tab_widget.count()):
+            if self.tab_widget.tabText(i) == "⚡ Quick Launch":
+                self.tab_widget.setCurrentIndex(i)
+                break
     
     def closeEvent(self, event):
         """Handle window close event."""

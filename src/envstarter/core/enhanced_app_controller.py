@@ -165,8 +165,8 @@ class EnhancedAppController(QObject):
         menu.addSeparator()
         
         # System Status
-        status_menu = menu.addMenu("📊 System Status")
-        self._populate_status_menu(status_menu)
+        self.status_menu = menu.addMenu("📊 System Status")
+        self._populate_status_menu(self.status_menu)
         
         menu.addSeparator()
         
@@ -298,7 +298,9 @@ class EnhancedAppController(QObject):
         """Update the tray menu with current information."""
         if self.tray_menu:
             self._update_containers_menu()
-            self._populate_status_menu(self.tray_menu.children()[-3])  # Status menu
+            if hasattr(self, 'status_menu'):
+                self.status_menu.clear()
+                self._populate_status_menu(self.status_menu)
     
     def _on_tray_activated(self, reason):
         """Handle tray icon activation."""
