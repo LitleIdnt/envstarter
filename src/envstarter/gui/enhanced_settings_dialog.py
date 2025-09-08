@@ -680,6 +680,10 @@ class EnhancedSettingsDialog(QDialog):
         self.setWindowTitle("🔧 EnvStarter Settings & Environment Management")
         self.setMinimumSize(1000, 700)
         
+        # Apply EnvStarter icon
+        from src.envstarter.utils.icons import apply_icon_to_widget
+        apply_icon_to_widget(self)
+        
         layout = QVBoxLayout()
         
         # Header
@@ -823,6 +827,47 @@ class EnhancedSettingsDialog(QDialog):
         tab = QWidget()
         layout = QVBoxLayout()
         
+        # Appearance settings
+        appearance_group = QGroupBox("🎨 Appearance Settings")
+        appearance_layout = QFormLayout()
+        
+        # Theme selection
+        from src.envstarter.utils.theme_manager import get_theme_manager
+        self.theme_manager = get_theme_manager()
+        
+        self.theme_combo = QComboBox()
+        themes = self.theme_manager.get_available_themes()
+        for theme_code, theme_name in themes.items():
+            self.theme_combo.addItem(f"{theme_name}", theme_code)
+        
+        # Set current theme
+        current_theme = self.theme_manager.get_current_theme()
+        current_index = list(themes.keys()).index(current_theme)
+        self.theme_combo.setCurrentIndex(current_index)
+        self.theme_combo.currentTextChanged.connect(self.on_theme_changed)
+        
+        appearance_layout.addRow("🎨 Theme:", self.theme_combo)
+        
+        # Language selection
+        from src.envstarter.utils.language_manager import get_language_manager
+        self.language_manager = get_language_manager()
+        
+        self.language_combo = QComboBox()
+        languages = self.language_manager.get_available_languages()
+        for lang_code, lang_name in languages.items():
+            self.language_combo.addItem(f"{lang_name}", lang_code)
+        
+        # Set current language
+        current_language = self.language_manager.get_current_language()
+        current_lang_index = list(languages.keys()).index(current_language)
+        self.language_combo.setCurrentIndex(current_lang_index)
+        self.language_combo.currentTextChanged.connect(self.on_language_changed)
+        
+        appearance_layout.addRow("🌍 Language:", self.language_combo)
+        
+        appearance_group.setLayout(appearance_layout)
+        layout.addWidget(appearance_group)
+        
         # General settings
         general_group = QGroupBox("🔧 General Settings")
         general_layout = QFormLayout()
@@ -952,37 +997,154 @@ class EnhancedSettingsDialog(QDialog):
             self.enable_environment_actions(False)
     
     def show_environment_details(self, env: Environment):
-        """Show environment details."""
+        """Show environment details with proper readability."""
         if not env:
             self.env_details_label.setText("Select an environment to view details")
             return
         
+        # Apply theme-aware styling for better readability
+        from src.envstarter.utils.theme_manager import get_theme_manager
+        theme = get_theme_manager()
+        
+        # Get colors from current theme
+        bg_color = theme.get_color("surface")
+        text_color = theme.get_color("text_primary")
+        secondary_color = theme.get_color("text_secondary")
+        border_color = theme.get_color("border")
+        
+        # Enhanced HTML with proper styling
         details = f"""
-        <h3>🎯 {env.name}</h3>
-        <p><b>Description:</b> {env.description or 'No description'}</p>
-        <p><b>📱 Applications:</b> {len(env.applications)}</p>
-        <p><b>🌐 Websites:</b> {len(env.websites)}</p>
-        <p><b>⏱️ Startup Delay:</b> {env.startup_delay} seconds</p>
-        <p><b>🖥️ Virtual Desktop:</b> {'Yes' if env.use_virtual_desktop else 'No'}</p>
+        <div style="
+            background-color: {bg_color}; 
+            color: {text_color}; 
+            padding: 20px; 
+            border: 1px solid {border_color}; 
+            border-radius: 8px; 
+            font-family: 'Segoe UI', Arial, sans-serif;
+            line-height: 1.6;
+        ">
+            <h2 style="
+                color: {text_color}; 
+                font-size: 18px; 
+                font-weight: bold; 
+                margin: 0 0 16px 0;
+                border-bottom: 2px solid {border_color};
+                padding-bottom: 8px;
+            ">🎯 {env.name}</h2>
+            
+            <div style="margin-bottom: 12px;">
+                <span style="font-weight: bold; color: {text_color};">Description:</span>
+                <span style="color: {secondary_color}; margin-left: 8px;">
+                    {env.description or 'No description provided'}
+                </span>
+            </div>
+            
+            <div style="
+                display: grid; 
+                grid-template-columns: repeat(2, 1fr); 
+                gap: 12px; 
+                margin: 16px 0;
+                padding: 12px;
+                background-color: {bg_color};
+                border: 1px solid {border_color};
+                border-radius: 6px;
+            ">
+                <div>
+                    <span style="font-weight: bold; color: {text_color};">📱 Applications:</span>
+                    <span style="color: {secondary_color}; margin-left: 8px; font-size: 16px; font-weight: bold;">
+                        {len(env.applications)}
+                    </span>
+                </div>
+                <div>
+                    <span style="font-weight: bold; color: {text_color};">🌐 Websites:</span>
+                    <span style="color: {secondary_color}; margin-left: 8px; font-size: 16px; font-weight: bold;">
+                        {len(env.websites)}
+                    </span>
+                </div>
+                <div>
+                    <span style="font-weight: bold; color: {text_color};">⏱️ Startup Delay:</span>
+                    <span style="color: {secondary_color}; margin-left: 8px;">
+                        {env.startup_delay} seconds
+                    </span>
+                </div>
+                <div>
+                    <span style="font-weight: bold; color: {text_color};">🖥️ Virtual Desktop:</span>
+                    <span style="color: {secondary_color}; margin-left: 8px;">
+                        {'✅ Yes' if env.use_virtual_desktop else '❌ No'}
+                    </span>
+                </div>
+            </div>
         """
         
         if env.applications:
-            details += "<p><b>Applications:</b><br>"
+            details += f"""
+            <div style="margin-top: 16px;">
+                <h4 style="
+                    color: {text_color}; 
+                    font-size: 14px; 
+                    font-weight: bold; 
+                    margin: 0 0 8px 0;
+                ">📱 Applications:</h4>
+                <ul style="
+                    margin: 0; 
+                    padding-left: 20px; 
+                    color: {secondary_color};
+                    font-size: 13px;
+                ">
+            """
             for app in env.applications[:5]:  # Show first 5
-                details += f"  • {app.name}<br>"
+                details += f"<li style='margin-bottom: 4px;'><strong>{app.name}</strong>"
+                if app.path:
+                    short_path = app.path if len(app.path) < 50 else f"...{app.path[-47:]}"
+                    details += f"<br><span style='color: {secondary_color}; font-size: 11px;'>📁 {short_path}</span>"
+                details += "</li>"
+            
             if len(env.applications) > 5:
-                details += f"  ... and {len(env.applications) - 5} more<br>"
-            details += "</p>"
+                details += f"<li style='color: {secondary_color}; font-style: italic;'>... and {len(env.applications) - 5} more applications</li>"
+            details += "</ul></div>"
         
         if env.websites:
-            details += "<p><b>Websites:</b><br>"
+            details += f"""
+            <div style="margin-top: 16px;">
+                <h4 style="
+                    color: {text_color}; 
+                    font-size: 14px; 
+                    font-weight: bold; 
+                    margin: 0 0 8px 0;
+                ">🌐 Websites:</h4>
+                <ul style="
+                    margin: 0; 
+                    padding-left: 20px; 
+                    color: {secondary_color};
+                    font-size: 13px;
+                ">
+            """
             for site in env.websites[:5]:  # Show first 5
-                details += f"  • {site.name}<br>"
+                details += f"<li style='margin-bottom: 4px;'><strong>{site.name}</strong>"
+                if site.url:
+                    short_url = site.url if len(site.url) < 50 else f"...{site.url[-47:]}"
+                    details += f"<br><span style='color: {secondary_color}; font-size: 11px;'>🔗 {short_url}</span>"
+                details += "</li>"
+            
             if len(env.websites) > 5:
-                details += f"  ... and {len(env.websites) - 5} more<br>"
-            details += "</p>"
+                details += f"<li style='color: {secondary_color}; font-style: italic;'>... and {len(env.websites) - 5} more websites</li>"
+            details += "</ul></div>"
         
+        details += "</div>"
+        
+        # Apply the styled content
         self.env_details_label.setText(details)
+        
+        # Also apply theme styling to the label itself
+        self.env_details_label.setStyleSheet(f"""
+            QLabel {{
+                background-color: {bg_color};
+                border: 1px solid {border_color};
+                border-radius: 8px;
+                padding: 4px;
+                font-size: 13px;
+            }}
+        """)
     
     def enable_environment_actions(self, enabled: bool):
         """Enable/disable environment action buttons."""
@@ -1276,6 +1438,33 @@ class EnhancedSettingsDialog(QDialog):
         self.controller.toggle_auto_start(self.auto_start_check.isChecked())
         
         QMessageBox.information(self, "Settings Applied", "Settings have been saved successfully!")
+    
+    def on_theme_changed(self):
+        """Handle theme change."""
+        selected_data = self.theme_combo.currentData()
+        if selected_data:
+            from src.envstarter.utils.theme_manager import get_theme_manager
+            theme_manager = get_theme_manager()
+            theme_manager.set_theme(selected_data)
+            
+            # Update environment details display
+            self.on_environment_selected()
+    
+    def on_language_changed(self):
+        """Handle language change."""
+        selected_data = self.language_combo.currentData()
+        if selected_data:
+            from src.envstarter.utils.language_manager import get_language_manager
+            language_manager = get_language_manager()
+            language_manager.set_language(selected_data)
+            
+            # Show message about restart
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self, "Language Changed", 
+                f"Language changed to {self.language_combo.currentText()}!\n"
+                f"Some changes will take effect after restart."
+            )
     
     def load_current_settings(self):
         """Load current settings into the UI."""

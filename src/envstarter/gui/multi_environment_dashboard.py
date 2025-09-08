@@ -415,7 +415,11 @@ class MultiEnvironmentDashboard(QWidget):
         
         # Core components
         self.manager = get_multi_environment_manager()
-        self.launcher = get_concurrent_launcher()
+        self.launcher = get_concurrent_launcher()  # Keep for queue functionality
+        
+        # VM manager for isolated environments
+        from src.envstarter.core.vm_environment_manager import get_vm_environment_manager
+        self.vm_manager = get_vm_environment_manager()
         
         # UI state
         self.container_cards: Dict[str, ContainerStatusCard] = {}
@@ -433,10 +437,20 @@ class MultiEnvironmentDashboard(QWidget):
         self.setWindowTitle("🎮 Multi-Environment Dashboard")
         self.setMinimumSize(1200, 800)
         
+        # Apply EnvStarter icon
+        from src.envstarter.utils.icons import apply_icon_to_widget
+        apply_icon_to_widget(self)
+        
         # Main layout
         main_layout = QVBoxLayout()
         main_layout.setSpacing(16)
         main_layout.setContentsMargins(20, 20, 20, 20)
+        
+        # Environment Status Bar
+        from src.envstarter.gui.environment_status_widget import EnvironmentStatusWidget
+        self.env_status_widget = EnvironmentStatusWidget()
+        self.env_status_widget.switch_requested.connect(self.switch_to_environment)
+        main_layout.addWidget(self.env_status_widget)
         
         # Header
         header_layout = QHBoxLayout()
@@ -853,7 +867,7 @@ class MultiEnvironmentDashboard(QWidget):
         dialog.exec()
     
     def batch_launch_selected(self, dialog, mode_str: str):
-        """Launch selected environments in batch."""
+        """Launch selected environments as isolated VMs."""
         selected_envs = []
         
         for checkbox, env in self.env_checkboxes.values():
@@ -866,23 +880,18 @@ class MultiEnvironmentDashboard(QWidget):
         
         dialog.accept()
         
-        # Convert mode string to enum
-        mode_map = {
-            "Concurrent": LaunchMode.CONCURRENT,
-            "Sequential": LaunchMode.SEQUENTIAL,
-            "Batched": LaunchMode.BATCHED,
-            "Staggered": LaunchMode.STAGGERED
-        }
+        print(f"💻 Launching {len(selected_envs)} environments as isolated VMs")
         
-        launch_mode = mode_map.get(mode_str, LaunchMode.CONCURRENT)
+        # Launch environments as VM containers
+        self.launch_environments(selected_envs)
         
-        # Add environments to queue
-        self.launcher.add_multiple_environments(selected_envs, switch_to_last=True, launch_mode=launch_mode)
-        
-        print(f"🚀 Added {len(selected_envs)} environments to launch queue")
-        
-        # Switch to queue tab
-        self.tab_widget.setCurrentIndex(2)
+        # Show success message
+        QMessageBox.information(
+            self, "VM Launch Started", 
+            f"🚀 Started creating {len(selected_envs)} VM environments!\n\n"
+            "Each environment will run on its own virtual desktop.\n"
+            "You can switch between them like switching VMs."
+        )
     
     def launch_queue(self):
         """Launch all items in the queue."""
@@ -1202,45 +1211,74 @@ class MultiEnvironmentDashboard(QWidget):
             self.launch_environments(environments)
     
     def launch_environments(self, environments: List):
-        """Launch multiple environments with selected mode."""
-        # Get launch mode
-        mode_id = self.launch_mode_group.checkedId()
-        if mode_id == 0:
-            mode = LaunchMode.CONCURRENT
-        elif mode_id == 1:
-            mode = LaunchMode.SEQUENTIAL
-        elif mode_id == 2:
-            mode = LaunchMode.BATCHED
-        else:
-            mode = LaunchMode.STAGGERED
+        """Launch multiple environments as isolated VM-like containers."""
+        print(f"💻 Launching {len(environments)} environments as isolated VMs")
         
-        # Get settings
-        batch_size = self.batch_size_spin.value()
-        delay_ms = self.delay_spin.value()
+        # Import VM manager
+        from src.envstarter.core.vm_environment_manager import get_vm_environment_manager
+        vm_manager = get_vm_environment_manager()
         
-        print(f"🚀 Launching {len(environments)} environments in {mode} mode")
+        # Get launch mode for timing
+        delay_ms = 1000  # Default delay between launches
+        if hasattr(self, 'delay_spin') and self.delay_spin:
+            delay_ms = self.delay_spin.value()
         
-        # Create launch thread
-        self.launch_thread = LaunchThread(
-            environments, mode, 
-            batch_size=batch_size, 
-            stagger_delay_ms=delay_ms
-        )
+        # Launch environments asynchronously as isolated VMs
+        async def launch_vm_environments():
+            successful_launches = 0
+            
+            for i, env in enumerate(environments):
+                try:
+                    print(f"💻 Creating VM environment {i+1}/{len(environments)}: {env.name}")
+                    
+                    # Create VM environment with complete isolation
+                    vm_env = await vm_manager.create_vm_environment(env)
+                    
+                    if vm_env:
+                        print(f"✅ VM environment created: {env.name} (Desktop: {vm_env.desktop_id})")
+                        successful_launches += 1
+                        
+                        # Emit container started signal for UI updates
+                        self.manager.container_started.emit(vm_env.container_id)
+                        
+                        # Small delay between launches if multiple environments
+                        if len(environments) > 1 and i < len(environments) - 1:
+                            await asyncio.sleep(delay_ms / 1000.0)
+                    else:
+                        print(f"❌ Failed to create VM environment: {env.name}")
+                        
+                except Exception as e:
+                    print(f"❌ Error creating VM environment {env.name}: {e}")
+            
+            print(f"✅ VM launch completed: {successful_launches}/{len(environments)} environments created")
+            
+            # Refresh containers display
+            self.refresh_containers()
         
-        # Connect signals
-        self.launch_thread.launch_started.connect(self.on_launch_started)
-        self.launch_thread.launch_completed.connect(self.on_launch_completed)
-        self.launch_thread.all_completed.connect(self.on_all_launches_completed)
-        self.launch_thread.error_occurred.connect(self.on_launch_thread_error)
+        # Run in thread to avoid blocking UI
+        def run_vm_launch():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(launch_vm_environments())
+            finally:
+                loop.close()
         
-        # Start launch
-        self.launch_thread.start()
-        
-        # Update UI
-        QMessageBox.information(
-            self, "Launch Started",
-            f"Started launching {len(environments)} environments in {mode} mode."
-        )
+        # Start VM launch thread
+        import threading
+        launch_thread = threading.Thread(target=run_vm_launch)
+        launch_thread.daemon = True
+        launch_thread.start()
+            
+            # Update UI
+            QMessageBox.information(
+                self, "Launch Started",
+                f"Started launching {len(environments)} environments in {mode.value} mode."
+            )
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Launch Error", f"Failed to start launch: {str(e)}")
+            print(f"❌ Launch error: {e}")
     
     def pause_all_containers(self):
         """Pause all running containers."""
@@ -1331,6 +1369,31 @@ class MultiEnvironmentDashboard(QWidget):
         if hasattr(self, 'quick_launch_list'):
             self.load_quick_launch_environments()
         self.refresh_containers()
+    
+    def switch_to_environment(self, container_id: str):
+        """Switch to the specified VM environment like switching between VMs."""
+        try:
+            from src.envstarter.core.vm_environment_manager import get_vm_environment_manager
+            vm_manager = get_vm_environment_manager()
+            
+            # Use VM manager to switch between virtual desktops
+            success = vm_manager.switch_to_vm_environment(container_id)
+            
+            if success:
+                print(f"💻 Successfully switched to VM environment: {container_id}")
+                # Also update multi-environment manager tracking
+                from src.envstarter.core.enhanced_app_controller import EnhancedAppController
+                controller = EnhancedAppController()
+                controller.switch_to_container(container_id)
+            else:
+                print(f"⚠️ Failed to switch to VM environment: {container_id}")
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.warning(self, "Switch Error", f"Failed to switch to VM environment: {container_id}")
+                
+        except Exception as e:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Switch Error", f"Failed to switch to environment: {str(e)}")
+            print(f"❌ Error switching to environment: {e}")
     
     def show_quick_launch_dialog(self):
         """Show quick launch dialog."""

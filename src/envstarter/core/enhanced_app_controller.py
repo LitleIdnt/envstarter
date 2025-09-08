@@ -99,9 +99,10 @@ class EnhancedAppController(QObject):
         
         self.tray_icon = QSystemTrayIcon()
         
-        # Create tray icon
+        # Create tray icon using envstarter_icon.ico
         icon = get_tray_icon()
         self.tray_icon.setIcon(icon)
+        print("🎨 Applied EnvStarter icon to system tray")
         self.tray_icon.setToolTip("🎮 EnvStarter Multi-Environment")
         
         # Create enhanced context menu
@@ -184,35 +185,71 @@ class EnhancedAppController(QObject):
         self.tray_icon.setContextMenu(menu)
     
     def _update_containers_menu(self):
-        """Update the running containers menu."""
+        """Update the running containers menu with VM environment information."""
         if not self.containers_menu:
             return
         
         self.containers_menu.clear()
         
+        # Get both regular containers and VM environments
         containers = self.manager.get_all_containers()
         running_containers = {
             cid: info for cid, info in containers.items()
             if info["state"] == "running"
         }
         
-        if not running_containers:
-            no_containers_action = QAction("No containers running", self.containers_menu)
+        # Also get VM environments
+        try:
+            from src.envstarter.core.vm_environment_manager import get_vm_environment_manager
+            vm_manager = get_vm_environment_manager()
+            vm_environments = vm_manager.get_all_vm_environments()
+        except Exception as e:
+            print(f"⚠️ Error getting VM environments: {e}")
+            vm_environments = {}
+        
+        if not running_containers and not vm_environments:
+            no_containers_action = QAction("No environments running", self.containers_menu)
             no_containers_action.setEnabled(False)
             self.containers_menu.addAction(no_containers_action)
             return
         
-        for container_id, info in running_containers.items():
-            env_name = info.get("environment_name", "Unknown")
-            desktop_idx = info.get("desktop_index", -1)
+        # Add VM environments first
+        for container_id, vm_info in vm_environments.items():
+            env_name = vm_info.get("environment_name", "Unknown")
+            desktop_name = vm_info.get("desktop_name", "Unknown Desktop")
+            is_current = vm_info.get("is_current", False)
+            is_isolated = vm_info.get("is_isolated", False)
             
-            # Create container submenu
-            container_menu = self.containers_menu.addMenu(f"🎯 {env_name}")
+            # Create VM container submenu
+            status_icon = "🟢" if is_current else "💻"
+            isolation_icon = "🔒" if is_isolated else "📂"
+            container_menu = self.containers_menu.addMenu(f"{status_icon} {env_name} {isolation_icon}")
             
-            # Switch action
-            switch_action = QAction(f"🔄 Switch to Desktop #{desktop_idx}", container_menu)
+            # VM Switch action
+            switch_action = QAction(f"🔄 Switch to VM: {desktop_name}", container_menu)
             switch_action.triggered.connect(lambda checked, cid=container_id: self.switch_to_container(cid))
             container_menu.addAction(switch_action)
+            
+            # VM Info action
+            info_action = QAction(f"📊 Desktop: {desktop_name}", container_menu)
+            info_action.setEnabled(False)
+            container_menu.addAction(info_action)
+            
+            container_menu.addSeparator()
+        
+        # Add regular containers (fallback)
+        for container_id, info in running_containers.items():
+            if container_id not in vm_environments:  # Don't duplicate VM environments
+                env_name = info.get("environment_name", "Unknown")
+                desktop_idx = info.get("desktop_index", -1)
+                
+                # Create container submenu
+                container_menu = self.containers_menu.addMenu(f"📦 {env_name}")
+                
+                # Switch action
+                switch_action = QAction(f"🔄 Switch to Desktop #{desktop_idx}", container_menu)
+                switch_action.triggered.connect(lambda checked, cid=container_id: self.switch_to_container(cid))
+                container_menu.addAction(switch_action)
             
             # Container stats
             stats = info.get("stats", {})
@@ -331,21 +368,40 @@ class EnhancedAppController(QObject):
             raise e
     
     def launch_environment_quick(self, environment: Environment):
-        """Quick launch an environment from tray menu."""
-        def launch_async():
+        """Quick launch an environment from tray menu using VM-like isolation."""
+        def launch_vm_async():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
-                container_id = loop.run_until_complete(
-                    self.launch_environment_async(environment, switch_to=True)
+                from src.envstarter.core.vm_environment_manager import get_vm_environment_manager
+                from datetime import datetime
+                
+                vm_manager = get_vm_environment_manager()
+                container_id = f"vm_{environment.name.lower().replace(' ', '_')}_{datetime.now().strftime('%H%M%S')}"
+                
+                print(f"🚀 Creating VM-isolated environment: {environment.name}")
+                
+                # Create isolated VM environment
+                vm_env = loop.run_until_complete(
+                    vm_manager.create_vm_environment(environment, container_id)
                 )
-                print(f"🚀 Quick launched: {environment.name} → {container_id}")
+                
+                if vm_env:
+                    print(f"✅ VM environment created: {environment.name}")
+                    print(f"🖥️ Virtual Desktop: {vm_env.desktop_id}")
+                    print(f"📱 Applications: {len(vm_env.processes)}")
+                    
+                    # Switch to the new VM environment
+                    vm_manager.switch_to_vm_environment(container_id)
+                else:
+                    print(f"❌ Failed to create VM environment: {environment.name}")
+                    
             except Exception as e:
-                print(f"❌ Quick launch failed: {e}")
+                print(f"❌ VM launch failed: {e}")
             finally:
                 loop.close()
         
-        thread = threading.Thread(target=launch_async, daemon=True)
+        thread = threading.Thread(target=launch_vm_async, daemon=True)
         thread.start()
     
     def launch_all_environments(self):
@@ -399,39 +455,69 @@ class EnhancedAppController(QObject):
         print(f"🚀 Starting batch launch of {len(environments)} environments...")
     
     def switch_to_container(self, container_id: str):
-        """Switch to a specific container."""
+        """Switch to a specific VM container like switching between VMs."""
         def switch_async():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            from src.envstarter.core.vm_environment_manager import get_vm_environment_manager
+            
             try:
-                success = loop.run_until_complete(self.manager.switch_to_container(container_id))
-                if success:
-                    print(f"🔄 Switched to container: {container_id}")
+                # Use VM manager for desktop switching
+                vm_manager = get_vm_environment_manager()
+                vm_success = vm_manager.switch_to_vm_environment(container_id)
+                
+                if vm_success:
+                    print(f"💻 Switched to VM environment: {container_id}")
+                    
+                    # Also update multi-environment manager
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        success = loop.run_until_complete(self.manager.switch_to_container(container_id))
+                        if success:
+                            print(f"🔄 Container tracking updated: {container_id}")
+                    finally:
+                        loop.close()
                 else:
-                    print(f"❌ Failed to switch to container: {container_id}")
+                    print(f"❌ Failed to switch to VM environment: {container_id}")
+                    
             except Exception as e:
-                print(f"❌ Error switching to container: {e}")
-            finally:
-                loop.close()
+                print(f"❌ Error switching to VM environment: {e}")
         
         thread = threading.Thread(target=switch_async, daemon=True)
         thread.start()
     
     def stop_container(self, container_id: str):
-        """Stop a specific container."""
+        """Stop a specific VM container and destroy its virtual desktop."""
         def stop_async():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            from src.envstarter.core.vm_environment_manager import get_vm_environment_manager
+            
             try:
-                success = loop.run_until_complete(self.manager.stop_environment_container(container_id))
-                if success:
-                    print(f"🛑 Stopped container: {container_id}")
-                else:
-                    print(f"❌ Failed to stop container: {container_id}")
+                # Use VM manager to properly destroy the VM environment
+                vm_manager = get_vm_environment_manager()
+                
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+                try:
+                    # Destroy VM environment (includes stopping container and cleaning up desktop)
+                    vm_success = loop.run_until_complete(
+                        vm_manager.destroy_vm_environment(container_id, cleanup_desktop=True)
+                    )
+                    
+                    if vm_success:
+                        print(f"💻 VM environment destroyed: {container_id}")
+                        
+                        # Also update multi-environment manager
+                        success = loop.run_until_complete(self.manager.stop_environment_container(container_id))
+                        if success:
+                            print(f"🛑 Container tracking updated: {container_id}")
+                    else:
+                        print(f"❌ Failed to destroy VM environment: {container_id}")
+                        
+                finally:
+                    loop.close()
+                    
             except Exception as e:
-                print(f"❌ Error stopping container: {e}")
-            finally:
-                loop.close()
+                print(f"❌ Error stopping VM environment: {e}")
         
         thread = threading.Thread(target=stop_async, daemon=True)
         thread.start()

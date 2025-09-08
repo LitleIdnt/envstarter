@@ -50,12 +50,34 @@ class EnhancedEnvStarterApp:
         self.app.setApplicationVersion("2.0.0")
         self.app.setOrganizationName("EnvStarter Enhanced")
         
+        # Apply the EnvStarter icon to the entire application
+        from src.envstarter.utils.icons import apply_icon_to_app
+        apply_icon_to_app(self.app)
+        
         # Initialize enhanced components
         self.controller = EnhancedAppController()
         self.environment_selector = None
         self.settings_dialog = None
         self.dashboard = None
         self.system_integration = SystemIntegration()
+        
+        # Initialize theme and language managers
+        from src.envstarter.utils.theme_manager import get_theme_manager
+        from src.envstarter.utils.language_manager import get_language_manager
+        from src.envstarter.utils.environment_indicator import get_environment_indicator_manager
+        from src.envstarter.core.vm_environment_manager import get_vm_environment_manager
+        
+        self.theme_manager = get_theme_manager()
+        self.language_manager = get_language_manager()
+        self.indicator_manager = get_environment_indicator_manager()
+        self.vm_manager = get_vm_environment_manager()  # VM-like environment isolation
+        
+        # Set application instances
+        self.theme_manager.set_application_instance(self.app)
+        self.language_manager.set_application_instance(self.app)
+        
+        # Apply initial theme
+        self.theme_manager.set_theme("light")  # Default theme
         
         self._setup_application()
         self._setup_connections()

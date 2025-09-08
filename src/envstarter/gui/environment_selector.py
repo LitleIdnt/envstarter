@@ -234,10 +234,20 @@ class EnvironmentSelector(QWidget):
         self.setMinimumSize(900, 650)  # Larger for better accessibility
         self.resize(1000, 750)
         
+        # Apply EnvStarter icon
+        from src.envstarter.utils.icons import apply_icon_to_widget
+        apply_icon_to_widget(self)
+        
         # Main layout with better spacing
         main_layout = QVBoxLayout()
         main_layout.setSpacing(20)  # More breathing room
         main_layout.setContentsMargins(30, 30, 30, 30)
+        
+        # Environment Status Bar
+        from src.envstarter.gui.environment_status_widget import EnvironmentStatusWidget
+        self.env_status_widget = EnvironmentStatusWidget()
+        self.env_status_widget.switch_requested.connect(self.switch_to_environment)
+        main_layout.addWidget(self.env_status_widget)
         
         # Header with improved accessibility
         header_layout = QVBoxLayout()
@@ -845,6 +855,13 @@ class EnvironmentSelector(QWidget):
             
         except Exception as e:
             QMessageBox.warning(self, "Settings Error", f"Failed to open settings: {str(e)}")
+    
+    def switch_to_environment(self, container_id: str):
+        """Switch to the specified environment."""
+        try:
+            self.controller.switch_to_container(container_id)
+        except Exception as e:
+            QMessageBox.warning(self, "Switch Error", f"Failed to switch to environment: {str(e)}")
     
     def on_environments_changed(self):
         """Handle environment changes."""
