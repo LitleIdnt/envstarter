@@ -4,7 +4,9 @@
       "Bash(pip3 install:*)",
       "Bash(pip install:*)",
       "Bash(python:*)",
-      "Bash(apt list:*)"
+      "Bash(apt list:*)",
+      "Bash(chmod:*)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []

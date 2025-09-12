@@ -19,6 +19,7 @@ from pathlib import Path
 from PyQt6.QtCore import QObject, pyqtSignal, QTimer
 
 from src.envstarter.core.models import Environment, Application, Website
+from src.envstarter.core.window_title_injector import EnvironmentWindowManager
 
 
 class EnvironmentState(Enum):
@@ -119,6 +120,10 @@ class SimpleEnvironmentContainer(QObject):
         self.desktop_index = hash(f"{environment.name}-{container_id}") % 10 + 1
         self.desktop_name = f"EnvBox-{environment.name}"
         
+        # WINDOW MANAGEMENT AND ISOLATION
+        self.window_manager = EnvironmentWindowManager(environment.name, container_id)
+        self.isolation_active = False
+        
     async def start_container(self) -> bool:
         """🚀 START THE ENVIRONMENT CONTAINER (simplified version)"""
         if self.state != EnvironmentState.STOPPED:
@@ -150,8 +155,16 @@ class SimpleEnvironmentContainer(QObject):
             # Container is now running
             self._set_state(EnvironmentState.RUNNING)
             
+            # SET UP WINDOW TITLES AND ISOLATION!
+            if self.tracked_processes:
+                self.window_manager.setup_environment_windows(list(self.tracked_processes))
+                self.isolation_active = True
+                print(f"🎯 WINDOW TITLES AND ISOLATION ACTIVE FOR: {self.environment.name.upper()}")
+            
             print(f"✅ Simplified container '{self.container_id}' started successfully!")
             print(f"   🔄 Processes: {len(self.tracked_processes)} tracked")
+            print(f"   🎯 Environment: {self.environment.name.upper()}")
+            print(f"   🔒 Isolation: {'ACTIVE' if self.isolation_active else 'DISABLED'}")
             
             return True
             
@@ -218,18 +231,38 @@ class SimpleEnvironmentContainer(QObject):
             # Set working directory
             cwd = app.working_directory if app.working_directory else None
             
-            # Launch process
+            # Launch process with environment variables
+            env = os.environ.copy()
+            env['ENVSTARTER_ENV'] = self.environment.name
+            env['ENVSTARTER_CONTAINER'] = self.container_id
+            env['ENVSTARTER_ISOLATED'] = 'true'
+            
             if os.name == 'nt':  # Windows
                 process = subprocess.Popen(
                     cmd,
                     cwd=cwd,
+                    env=env,
                     creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | 
                                  subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
                 )
             else:
-                process = subprocess.Popen(cmd, cwd=cwd)
+                process = subprocess.Popen(cmd, cwd=cwd, env=env)
             
-            return process.pid
+            # INJECT ENVIRONMENT NAME INTO WINDOW TITLE!
+            pid = process.pid
+            if pid:
+                # Track this process
+                self.tracked_processes.add(pid)
+                
+                # Add to window manager for title injection
+                self.window_manager.add_new_process(pid)
+                
+                # Emit signal
+                self.process_started.emit(self.container_id, pid, app.name)
+                
+                print(f"🚀 LAUNCHED {app.name} (PID: {pid}) IN ENVIRONMENT: {self.environment.name.upper()}")
+            
+            return pid
             
         except Exception as e:
             print(f"Error launching {app.name}: {e}")
@@ -349,6 +382,12 @@ class SimpleEnvironmentContainer(QObject):
             
             # Stop monitoring first
             self._stop_monitoring()
+            
+            # Clean up window management
+            if hasattr(self, 'window_manager'):
+                self.window_manager.shutdown()
+                self.isolation_active = False
+                print(f"🎯 Cleaned up window management for: {self.environment.name.upper()}")
             
             # Terminate all processes in container
             await self._terminate_container_processes(force)

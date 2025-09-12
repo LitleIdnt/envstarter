@@ -374,6 +374,7 @@ class EnhancedAppController(QObject):
             asyncio.set_event_loop(loop)
             try:
                 from src.envstarter.core.vm_environment_manager import get_vm_environment_manager
+                from src.envstarter.gui.environment_header_widget import show_environment_header
                 from datetime import datetime
                 
                 vm_manager = get_vm_environment_manager()
@@ -390,6 +391,9 @@ class EnhancedAppController(QObject):
                     print(f"✅ VM environment created: {environment.name}")
                     print(f"🖥️ Virtual Desktop: {vm_env.desktop_id}")
                     print(f"📱 Applications: {len(vm_env.processes)}")
+                    
+                    # Show big visible environment header
+                    show_environment_header(environment.name, container_id)
                     
                     # Switch to the new VM environment
                     vm_manager.switch_to_vm_environment(container_id)
