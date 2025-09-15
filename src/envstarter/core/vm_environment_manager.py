@@ -80,7 +80,7 @@ class VirtualDesktopAPI:
             powershell_script = f"""
             # Switch to desktop using Windows shortcuts
             Add-Type -AssemblyName System.Windows.Forms
-            [System.Windows.Forms.SendKeys]::SendWait("^{{WIN}}{{RIGHT}}")
+            [System.Windows.Forms.SendKeys]::SendWait("^{LWIN}{RIGHT}")
             Start-Sleep -Milliseconds 500
             """
             

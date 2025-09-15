@@ -37,7 +37,7 @@ class EnvironmentListItem(QFrame):
             EnvironmentListItem:hover {
                 background-color: #f6f8fa;
                 border-color: #0366d6;
-                box-shadow: 0 2px 4px rgba(3, 102, 214, 0.1);
+                border-width: 3px;
             }
             EnvironmentListItem:focus {
                 outline: 3px solid #0366d6;
@@ -329,7 +329,7 @@ class EnvironmentSelector(QWidget):
             }
             QListWidget#environment-list:focus {
                 border-color: #0366d6;
-                box-shadow: 0 0 0 3px rgba(3, 102, 214, 0.3);
+                border-width: 3px;
             }
             QListWidget#environment-list::item {
                 border: none;
@@ -369,7 +369,7 @@ class EnvironmentSelector(QWidget):
             QPushButton#primary-button:hover {
                 background-color: #218838;
                 border-color: #1e7e34;
-                box-shadow: 0 2px 4px rgba(40, 167, 69, 0.2);
+                border-width: 3px;
             }
             QPushButton#primary-button:focus {
                 outline: 3px solid #28a745;
@@ -379,7 +379,6 @@ class EnvironmentSelector(QWidget):
                 background-color: #e9ecef;
                 border-color: #dee2e6;
                 color: #6c757d;
-                box-shadow: none;
             }
         """)
         self.launch_button.setEnabled(False)
@@ -403,7 +402,7 @@ class EnvironmentSelector(QWidget):
             QPushButton#secondary-button:hover {
                 background-color: #0256cc;
                 border-color: #0256cc;
-                box-shadow: 0 2px 4px rgba(3, 102, 214, 0.2);
+                border-width: 3px;
             }
             QPushButton#secondary-button:focus {
                 outline: 3px solid #0366d6;
@@ -520,7 +519,7 @@ class EnvironmentSelector(QWidget):
             QTextEdit#details-text:focus {
                 border-color: #0366d6;
                 outline: none;
-                box-shadow: 0 0 0 3px rgba(3, 102, 214, 0.3);
+                border-width: 3px;
             }
         """)
         right_layout.addWidget(self.details_text)
@@ -574,7 +573,7 @@ class EnvironmentSelector(QWidget):
             QPushButton#tertiary-button:hover {
                 background-color: #fdcb6e;
                 border-color: #e17055;
-                box-shadow: 0 2px 4px rgba(253, 203, 110, 0.3);
+                border-width: 3px;
             }
             QPushButton#tertiary-button:focus {
                 outline: 3px solid #fdcb6e;
@@ -600,7 +599,7 @@ class EnvironmentSelector(QWidget):
             QPushButton#danger-button:hover {
                 background-color: #dc3545;
                 color: white;
-                box-shadow: 0 2px 4px rgba(220, 53, 69, 0.3);
+                border-width: 3px;
             }
             QPushButton#danger-button:focus {
                 outline: 3px solid #dc3545;

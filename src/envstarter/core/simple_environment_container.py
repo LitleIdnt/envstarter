@@ -19,7 +19,8 @@ from pathlib import Path
 from PyQt6.QtCore import QObject, pyqtSignal, QTimer
 
 from src.envstarter.core.models import Environment, Application, Website
-from src.envstarter.core.window_title_injector import EnvironmentWindowManager
+from src.envstarter.core.aggressive_title_injector import AggressiveWindowTitleInjector
+from src.envstarter.core.robust_app_launcher import get_robust_launcher
 
 
 class EnvironmentState(Enum):
@@ -120,8 +121,8 @@ class SimpleEnvironmentContainer(QObject):
         self.desktop_index = hash(f"{environment.name}-{container_id}") % 10 + 1
         self.desktop_name = f"EnvBox-{environment.name}"
         
-        # WINDOW MANAGEMENT AND ISOLATION
-        self.window_manager = EnvironmentWindowManager(environment.name, container_id)
+        # AGGRESSIVE WINDOW TITLE INJECTION
+        self.title_injector = AggressiveWindowTitleInjector(environment.name, container_id)
         self.isolation_active = False
         
     async def start_container(self) -> bool:
@@ -155,11 +156,13 @@ class SimpleEnvironmentContainer(QObject):
             # Container is now running
             self._set_state(EnvironmentState.RUNNING)
             
-            # SET UP WINDOW TITLES AND ISOLATION!
+            # START AGGRESSIVE TITLE INJECTION!
             if self.tracked_processes:
-                self.window_manager.setup_environment_windows(list(self.tracked_processes))
+                self.title_injector.start_aggressive_monitoring(list(self.tracked_processes))
                 self.isolation_active = True
-                print(f"🎯 WINDOW TITLES AND ISOLATION ACTIVE FOR: {self.environment.name.upper()}")
+                print(f"🔥 AGGRESSIVE TITLE INJECTION ACTIVE FOR: {self.environment.name.upper()}")
+                print(f"   Tracking {len(self.tracked_processes)} processes")
+                print(f"   Environment prefix: [{self.environment.name.upper()}]")
             
             print(f"✅ Simplified container '{self.container_id}' started successfully!")
             print(f"   🔄 Processes: {len(self.tracked_processes)} tracked")
@@ -216,56 +219,48 @@ class SimpleEnvironmentContainer(QObject):
                 print(f"    ❌ Error opening {website.name}: {e}")
     
     async def _launch_app_in_container(self, app: Application) -> Optional[int]:
-        """Launch a single application within the container."""
-        import subprocess
-        
+        """Launch a single application within the container using ROBUST launcher."""
         try:
-            # Expand environment variables
-            app_path = os.path.expandvars(app.path)
+            # Get the robust launcher
+            launcher = get_robust_launcher()
             
-            # Prepare command
-            cmd = [app_path]
-            if app.arguments:
-                cmd.extend(app.arguments.split())
+            # Prepare environment variables
+            env_vars = {
+                'ENVSTARTER_ENV': self.environment.name,
+                'ENVSTARTER_CONTAINER': self.container_id,
+                'ENVSTARTER_ISOLATED': 'true'
+            }
             
-            # Set working directory
-            cwd = app.working_directory if app.working_directory else None
+            # Launch using robust launcher
+            print(f"🚀 LAUNCHING {app.name} IN ENVIRONMENT: {self.environment.name.upper()}")
+            process = launcher.launch_application(
+                app_name=app.name,
+                app_path=app.path,
+                arguments=app.arguments or "",
+                working_dir=app.working_directory or "",
+                environment_vars=env_vars
+            )
             
-            # Launch process with environment variables
-            env = os.environ.copy()
-            env['ENVSTARTER_ENV'] = self.environment.name
-            env['ENVSTARTER_CONTAINER'] = self.container_id
-            env['ENVSTARTER_ISOLATED'] = 'true'
-            
-            if os.name == 'nt':  # Windows
-                process = subprocess.Popen(
-                    cmd,
-                    cwd=cwd,
-                    env=env,
-                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | 
-                                 subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
-                )
-            else:
-                process = subprocess.Popen(cmd, cwd=cwd, env=env)
-            
-            # INJECT ENVIRONMENT NAME INTO WINDOW TITLE!
-            pid = process.pid
-            if pid:
+            if process and process.pid:
+                pid = process.pid
+                
                 # Track this process
                 self.tracked_processes.add(pid)
                 
-                # Add to window manager for title injection
-                self.window_manager.add_new_process(pid)
+                # Add to AGGRESSIVE title injector
+                self.title_injector.add_process(pid)
                 
                 # Emit signal
                 self.process_started.emit(self.container_id, pid, app.name)
                 
-                print(f"🚀 LAUNCHED {app.name} (PID: {pid}) IN ENVIRONMENT: {self.environment.name.upper()}")
-            
-            return pid
+                print(f"✅ LAUNCHED {app.name} (PID: {pid}) - TITLE INJECTION ACTIVE!")
+                return pid
+            else:
+                print(f"❌ FAILED TO LAUNCH {app.name}")
+                return None
             
         except Exception as e:
-            print(f"Error launching {app.name}: {e}")
+            print(f"❌ Error launching {app.name}: {e}")
             return None
     
     async def _launch_website_in_container(self, website: Website) -> bool:
@@ -383,11 +378,11 @@ class SimpleEnvironmentContainer(QObject):
             # Stop monitoring first
             self._stop_monitoring()
             
-            # Clean up window management
-            if hasattr(self, 'window_manager'):
-                self.window_manager.shutdown()
+            # Clean up AGGRESSIVE title injection
+            if hasattr(self, 'title_injector'):
+                self.title_injector.stop_monitoring()
                 self.isolation_active = False
-                print(f"🎯 Cleaned up window management for: {self.environment.name.upper()}")
+                print(f"🔥 Stopped aggressive title injection for: {self.environment.name.upper()}")
             
             # Terminate all processes in container
             await self._terminate_container_processes(force)
